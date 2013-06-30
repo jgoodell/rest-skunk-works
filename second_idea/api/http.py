@@ -43,20 +43,18 @@ def get(uri):
         opened_file.close()
         return response
     except IOError, e:
-        #raise NotFound()
-        return 404
+        return ""
 
-def post(uri):
+def post(uri,resource):
     try:
         new_file = open(uri,'w')
         new_file.write(uri)
         new_file.close()
+        return "<resource><status>success</status><uri>%s</uri></resource>" % uri
     except IOError, e:
-        #raise Forbidden()
-        return 403
-    return "200 OK"
+        return "<resource><status>failure</status><uri>%s</uri></resource>" % uri
 
-def put(uri):
+def put(uri,resource):
     try:
         if os.path.isfile(uri):
             opened_file = open(uri,'a')
