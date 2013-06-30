@@ -1,17 +1,30 @@
 import ConfigParser
-import sys, os
+import sys, os, pdb
+from pprint import pprint
 
 import BaseHTTPServer
 
 from uri import UriDispatch
+from api.http import get, post, put, delete, NotFound, Forbidden, InternalServerError
 
 class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     server_version = "TrivialHTTP/1.0"
     def do_GET(self):
-        self.wfile.write("Hello World from '%s'" % self.path)
-        self.wfile.close()
-        self.send_header("Content-Type","application/text")
-        self.send_response(200)
+        try:
+            self.wfile.write(get(self.path))
+            self.wfile.close()
+            #self.send_header("Content-Type","text/html")
+            self.send_response(200)
+        except NotFound, e:
+            self.wfile.write(e)
+            self.wfile.close()
+            self.send_header("Content-Type","application/text")
+            self.send_response(e)
+        except InternalServerError, e:
+            self.wfile.write(e)
+            self.wfile.close()
+            self.send_header("Content-Type","application/text")
+            self.send_response(e)
 
     do_PUT = do_POST = do_DELETE = do_GET
 
