@@ -1,6 +1,9 @@
-import os, sys, re
+import os, sys, re, pdb, json
 
-_uri_pattern = re.compile(r"^/(.+)")
+from pymongo import Connection
+from pymongo.errors import ConnectionFailure, InvalidName
+
+from bson.json_util import dumps
 
 class NotFound(Exception):
     def __repr__(self):
@@ -23,27 +26,50 @@ class InternalServerError(Exception):
     def __int__(self):
         return 500
 
-def uri_magic(f):
-    def new_f(uri):
-        return f(_uri_pattern.match(uri).group(1))
-    return new_f
+# Database configuration & connection
+try:
+    c = Connection(host="0.0.0.0", port=27017)
+except ConnectionFailure, e:
+    sys.stderr.write("Could not connect to MongoDB: %s" % e)
+    sys.exit(1)
+database = c["restdb"]
 
-# FIXME: These functions need to accept only
-# hypertext and return only hypertext. The URI
-# strings is okay by the raising of python error
-# types is not.
+def uri_magic(f):
+        def new_f(uri):
+            try:
+                new_uri = uri.replace("/",".")
+                if new_uri.startswith("."):
+                    return f(new_uri[1:])
+                else:
+                    return f(new_uri)
+            except AttributeError, e:
+                return "<html>404 Not Found '%s'</html>" % e
+        return new_f
+
+def query(uri,args=dict()):
+    "Function that walks the uri getting each dbh attribute and finally returning the result of the query as a list of BSON objects."
+    response = list()
+    member = database
+    for each in uri.split('.'):
+        member = getattr(member,each)
+        try:
+            for each in getattr(member,"find")(args):
+                response.append(each)
+        except TypeError:
+            pass
+    return response
 
 @uri_magic
 def get(uri):
     sys.stdout.write(uri)
-    sys.stdout.write(os.getcwd())
     try:
-        opened_file = open(uri,'r')
-        response = opened_file.read()
-        opened_file.close()
-        return response
-    except IOError, e:
-        return ""
+        response = query(uri)
+        if response:
+            return dumps(response)
+        else:
+            return "<html>404 Not Found '%s'</html>" % uri
+    except InvalidName, e:
+        return "<html>404 Not Found '%s'</html>" % e
 
 def post(uri,resource):
     try:
