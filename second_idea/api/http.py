@@ -5,6 +5,8 @@ from pymongo.errors import ConnectionFailure, InvalidName
 
 from bson.json_util import dumps
 
+from lxml import etree
+
 class NotFound(Exception):
     def __repr__(self):
         return "404 Not Found"
@@ -59,13 +61,33 @@ def query(uri,args=dict()):
             pass
     return response
 
+def to_xml(uri,response):
+    elements = uri.split(".")
+    root = etree.Element(elements.pop(-1))
+    etree.SubElement(root, "uri").text = "/" + uri.replace(".","/")
+    current = root
+    for element in elements:
+        etree.SubElement(current,element)
+        current = element
+    for each in response:
+        for key in each.keys():
+            etree.SubElement(root,key).text = str(each[key])
+            # This is here because once nesting occurs I'm going to have
+            # make this work.
+            #try:
+            #    etree.SubElement(root[-1],key).text = str(each[key])
+            #except IndexError:
+            #    etree.SubElement(root,key).text = str(each[key])
+                    
+    return etree.tostring(root, pretty_print=True)
+
 @uri_magic
 def get(uri):
     sys.stdout.write(uri)
     try:
         response = query(uri)
         if response:
-            return dumps(response)
+            return to_xml(uri,response)
         else:
             return "<html>404 Not Found '%s'</html>" % uri
     except InvalidName, e:
