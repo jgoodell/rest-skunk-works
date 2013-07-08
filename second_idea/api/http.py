@@ -7,26 +7,7 @@ from bson.json_util import dumps
 
 from lxml import etree
 
-class NotFound(Exception):
-    def __repr__(self):
-        return "404 Not Found"
-    
-    def __int__(self):
-        return 404
-
-class Forbidden(Exception):
-    def __repr__(self):
-        return "403 Forbidden"
-    
-    def __int_(self):
-        return 403
-
-class InternalServerError(Exception):
-    def __repr__(self):
-        return "500 Internal Server Error"
-    
-    def __int__(self):
-        return 500
+from mako.template import Template
 
 # Database configuration & connection
 try:
@@ -36,7 +17,7 @@ except ConnectionFailure, e:
     sys.exit(1)
 database = c["restdb"]
 
-def uri_magic(f):
+def uri_magic_get(f):
         def new_f(uri):
             try:
                 new_uri = uri.replace("/",".")
@@ -44,6 +25,18 @@ def uri_magic(f):
                     return f(new_uri[1:])
                 else:
                     return f(new_uri)
+            except AttributeError, e:
+                return "<html>404 Not Found '%s'</html>" % e
+        return new_f
+
+def uri_magic_post(f):
+        def new_f(uri,content):
+            try:
+                new_uri = uri.replace("/",".")
+                if new_uri.startswith("."):
+                    return f(new_uri[1:],content)
+                else:
+                    return f(new_uri,content)
             except AttributeError, e:
                 return "<html>404 Not Found '%s'</html>" % e
         return new_f
@@ -61,46 +54,67 @@ def query(uri,args=dict()):
             pass
     return response
 
-def to_xml(uri,response):
-    elements = uri.split(".")
-    root = etree.Element(elements.pop(-1))
-    etree.SubElement(root, "uri").text = "/" + uri.replace(".","/")
-    current = root
-    for element in elements:
-        etree.SubElement(current,element)
-        current = element
-    for each in response:
-        for key in each.keys():
-            etree.SubElement(root,key).text = str(each[key])
-            # This is here because once nesting occurs I'm going to have
-            # make this work.
-            #try:
-            #    etree.SubElement(root[-1],key).text = str(each[key])
-            #except IndexError:
-            #    etree.SubElement(root,key).text = str(each[key])
-                    
-    return etree.tostring(root, pretty_print=True)
+def _create_document(form_content):
+    document = dict()
+    items = form_content.split("&")
+    for item in items:
+        key,value = item.split("=")
+        value = value.replace("+"," ")
+        document[key] = value
+    return document
 
-@uri_magic
+def _insert(uri,form_content):
+    pdb.set_trace()
+    member = database
+    document = _create_document(form_content)
+    for each in uri.split("."):
+        member = getattr(member,each)
+    member = getattr(member,'insert')
+    member(document)
+    
+def _uri_to_etree(uri):
+    root = None
+    current_element = root
+    for element in uri.split("."):
+        if current_element is not None:
+            current_element = etree.SubElement(current_element,element)
+        else:
+            root = etree.Element(element)
+            current_element = root
+    return root
+
+def _populate_etree(element_tree,resources):
+    for resource in resources:
+        sub_element = etree.SubElement(element_tree, "resource")
+        for key in resource.keys():
+            if key == "_id":
+                etree.SubElement(sub_element, "id").text = str(resource[key])
+            else:
+                etree.SubElement(sub_element, key).text = resource[key]
+    return element_tree
+
+@uri_magic_get
 def get(uri):
-    sys.stdout.write(uri)
     try:
-        response = query(uri)
-        if response:
-            return to_xml(uri,response)
+        resources = query(uri)
+        if resources:
+            resource_xml = etree.tostring(_populate_etree(_uri_to_etree(uri),
+                                                          resources),
+                                          pretty_print=True,
+                                          xml_declaration=True)
+            template = Template(filename="/Users/jgoodell/code/python/rest-skunk-works/second_idea/templates/resources.html")
+            return str(template.render(resources=resource_xml))
         else:
             return "<html>404 Not Found '%s'</html>" % uri
     except InvalidName, e:
-        return "<html>404 Not Found '%s'</html>" % e
+        if uri == "":
+            return open("index.html",'r').read()
+        else:
+            return "<html>404 Not Found '%s'</html>" % e
 
-def post(uri,resource):
-    try:
-        new_file = open(uri,'w')
-        new_file.write(uri)
-        new_file.close()
-        return "<resource><status>success</status><uri>%s</uri></resource>" % uri
-    except IOError, e:
-        return "<resource><status>failure</status><uri>%s</uri></resource>" % uri
+@uri_magic_post
+def post(uri,form_content):
+    _insert(uri,form_content)
 
 def put(uri,resource):
     try:

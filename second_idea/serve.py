@@ -12,13 +12,15 @@ from api.http import get, post, put, delete
 class Simple(resource.Resource):
     isLeaf = True
     def render_GET(self, request):
+        request.setResponseCode(200)
+        request.setHeader("Content-Type","text/html")
         return get(request.uri)
 
     def render_PUT(self, request):
         return "<html>PUT</html>"
 
     def render_POST(self, request):
-        return post(request.uri,request)
+        return post(request.uri,request.content.read())
 
     def render_DELETE(self, request):
         return "<html>DELETE</html>"
